@@ -1,0 +1,146 @@
+{*
+Example for LoRa_4 Click
+
+    Date          : Feb 2018.
+    Author        : Nemanja Medakovic
+
+Test configuration FT90x :
+    
+    MCU                : FT900
+    Dev. Board         : EasyFT90x v7 
+    FT90x Compiler ver : v2.2.1.0
+
+---
+
+Description :
+
+The application is composed of three sections :
+
+- System Initialization - Initializes peripherals and pins.
+- Application Initialization - Initializes UART bus driver, sets indication handler, sets channel parameters,
+  joins network and performs the transmission of radio frame.
+- Application Task - (code snippet) - Checks is indication occured.
+
+Additional Functions :
+
+- void indicationHandler( uint8_t *cmd, uint8_t *plSize, uint8_t *plBuffer ) - Logs results on USB UART when device
+  gets indication on command.
+
+*}
+program Click_LoRa_4_FT90x;
+
+uses Click_LoRa_4_types, Click_LoRa_4_config;
+
+var
+    tmpMsg : T_lora4_message; 
+    tmpRsp : T_lora4_message; 
+    
+procedure indicationHandler(cmd : ^uint8_t; plSize : ^uint8_t; plBuffer : ^uint8_t); 
+var
+    cnt : uint8_t;
+	ptr : ^uint8_t;
+    txt : array[20] of char;
+begin
+    txt[0] := 0;
+
+    ByteToHex(cmd^, txt); 
+    mikrobus_logWrite('IND TYPE: ', _LOG_TEXT); 
+    Ltrim(txt); 
+    mikrobus_logWrite(txt, _LOG_LINE); 
+    mikrobus_logWrite('PAYLOAD : ', _LOG_TEXT); 
+    cnt := 0;
+    while (cnt < plSize^) do 
+    begin
+	    ptr := plBuffer + cnt;
+        ByteToHex(ptr^, txt); 
+        Ltrim(txt); 
+        mikrobus_logWrite(txt, _LOG_TEXT); 
+        inc(cnt);
+    end;
+    mikrobus_logWrite('', _LOG_LINE); 
+
+end;
+
+procedure systemInit(); 
+begin
+
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_INT_PIN, _GPIO_INPUT); 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_RST_PIN, _GPIO_OUTPUT); 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_CS_PIN, _GPIO_OUTPUT); 
+    mikrobus_uartInit(_MIKROBUS1, @_LORA4_UART_CFG[0]); 
+    mikrobus_logInit(_LOG_USBUART, 115200); 
+    mikrobus_logWrite('Initializing...', _LOG_LINE); 
+    Delay_ms(100); 
+
+end;
+
+procedure applicationInit(); 
+var
+    response : uint8_t;
+begin
+
+    lora4_uartDriverInit(T_LORA4_P(@_MIKROBUS1_GPIO), T_LORA4_P(@_MIKROBUS1_UART)); 
+    Delay_ms(100); 
+    lora4_hardReset(); 
+    lora4_setIndHandler(@indicationHandler); 
+    tmpMsg.payLoad[0] := 1; 
+    tmpMsg.payLoad[1] := 2; 
+    tmpMsg.payLoad[2] := 3; 
+    tmpMsg.payLoad[3] := 4; 
+    tmpMsg.payLoad[4] := 5; 
+	response := lora4_setChannel(3, 0x33B4FFE0, 0x52, _LORA4_CHANNEL_DISABLED);
+    if (not response) then 
+    begin
+        mikrobus_logWrite('Setting Channel OK', _LOG_LINE); 
+    end
+    else 
+    begin
+        mikrobus_logWrite('Setting Channel Error', _LOG_LINE); 
+    end;
+	response := lora4_setNextTXDR(5);
+    if (not response) then 
+    begin
+        mikrobus_logWrite('Setting Data Rate OK', _LOG_LINE); 
+    end
+    else 
+    begin
+        mikrobus_logWrite('Setting Data Rate Error', _LOG_LINE); 
+    end;
+	response := lora4_joinNetwork(_LORA4_JOIN_ACTIVATION_BY_PERSONALIZATION_MODE);
+    if (not response) then 
+    begin
+        mikrobus_logWrite('Joining OK', _LOG_LINE); 
+    end
+    else 
+    begin
+        mikrobus_logWrite('Joining Error', _LOG_LINE); 
+    end;
+	response := lora4_txMessage(@tmpMsg.payLoad[0], 1, 10, _LORA4_UNCONFIRMED_TRANSMISSION);
+    if (not response) then 
+    begin
+        mikrobus_logWrite('Transmission OK', _LOG_LINE); 
+    end
+    else 
+    begin
+        mikrobus_logWrite('Transmission Error', _LOG_LINE); 
+    end;
+
+end;
+
+procedure applicationTask(); 
+begin
+
+    lora4_process(); 
+
+end;
+
+begin
+
+    systemInit(); 
+    applicationInit(); 
+    while (1) do 
+    begin 
+        applicationTask(); 
+    end;
+
+end.
